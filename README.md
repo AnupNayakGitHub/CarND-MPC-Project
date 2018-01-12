@@ -22,6 +22,7 @@ The MPC uses the ipopt library to compute actuators by minimizing cost. The lect
 
 * After trial and error, a value 10 is choosen for N and 100 ms for time deference. Coincidentally the observerved value for time difference matches with the delayed time which also eliminates the need for extra computation. Some of the tried value pairs are 20/0.1s, 20/0.05s, 10/0.05s, 50/0.1s. 
 * After an extensive web search and manual tuning, the cost multiplication factors are choosen as in `MPC.cpp\h` files.
+* The maximum cpu time is set to 0.01 seconds which should be sufficient to handle the computation.
 
 ## Using the computed actuators
 The cost minimization function returns both the actuation values- δ, and a. These values are fed to the simulator. To mimic the latency/delay, the current thread delays the 100ms before sending the actuator signals to the simulator.
