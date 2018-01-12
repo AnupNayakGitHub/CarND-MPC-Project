@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "MPC.h"
 #include "json.hpp"
+#include <cppad/cppad.hpp>
 
 // for convenience
 using json = nlohmann::json;
@@ -91,6 +92,8 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          double sa = j[1]["steering_angle"];
+          double a = j[1]["throttle"];
 
           /*
           * TODO: Calculate steering angle and throttle using MPC.
@@ -98,8 +101,41 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+          
+          //transformed waypoint coordinates
+          auto sin_psi = CppAD::sin(psi);
+          auto cos_psi = CppAD::cos(psi);
+          for(int i = ptsx.size(); i-- > 0;) {
+            auto dtx = ptsx[i] - px;
+            auto dty = ptsy[i] - py;
+            ptsx[i] = dtx * cos_psi + dty * sin_psi;
+            ptsy[i] = dty * cos_psi - dtx * sin_psi;
+          }
+          
+          auto coeffs = polyfit(Eigen::VectorXd::Map(ptsx.data(), ptsx.size()),
+                                Eigen::VectorXd::Map(ptsy.data(),ptsy.size()), 3);
+ 
+
+          auto cte = coeffs[0];
+          auto epsi = CppAD::atan(coeffs[1]);
+
+          Eigen::VectorXd state(6);
+          //state << x, y, psi, v, cte, epsi;
+          const double delay = 0.1; 
+          const double Lf = 2.67;
+          state << v * delay, //x coordinate after the dalay
+                   0, 
+                   -v * sa / Lf * delay, //vehicle orientation (psi) after delay 
+                   v + a*delay, //velocity after delay 
+                   cte + v * sin(epsi) * delay, //cross track error after delay 
+                   -(epsi + v * sa / Lf * delay);
+
+          auto result = mpc.Solve(state, coeffs);
+
+
+          // The first element is for steering value and and the second is throttle
+          double steer_value = result[0]/ (deg2rad(25)*Lf);
+          double throttle_value = result[1];
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
@@ -113,6 +149,12 @@ int main() {
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
+          for (int i = 2; i <= (result.size()/2); i++) {
+            mpc_x_vals.push_back(result[i]);
+          }
+          for (int i = (result.size()/2)+1; i < result.size(); i++) {
+            mpc_y_vals.push_back(result[i]);
+          }
 
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
@@ -123,6 +165,10 @@ int main() {
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
+          for (int i = 0; i < ptsx.size(); i++) {
+            next_x_vals.push_back(ptsx[i]);
+            next_y_vals.push_back(ptsy[i]);
+          }
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
